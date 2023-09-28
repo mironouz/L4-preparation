@@ -1,6 +1,6 @@
-# World Of Aircrafts Game JDK 20
+# Module 1: Java 8 and beyond
 
-## This small application demonstrates new features of Java 9-20 releases
+## World of aircraft. This small application demonstrates new features of Java 9-20 releases
 
 ## Java 9:
 
