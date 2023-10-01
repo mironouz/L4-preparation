@@ -19,7 +19,7 @@ We need to populate tables with huge amount of data for index analysis task. At 
 Let's check index sizes right after feeeding the data before creating any custom index. We can use the following command to check it:
 
 ```sql
-select indexrelname, pg_size_pretty(pg_relation_size(indexrelid)), amname
+select indexrelname "Index name", pg_size_pretty(pg_relation_size(indexrelid)) "Index size", amname "Index type"
 from pg_stat_all_indexes sai
 join pg_class c ON sai.indexrelid=c.oid
 join pg_am am ON c.relam=am.oid
@@ -34,8 +34,3 @@ We can see postgress created indexes for primary keys and unique columns with bt
 |"students_phone_number_key"|"4360 kB"|"btree"|
 |"subjects_pkey"|"40 kB"|"btree"|
 |"subjects_subject_name_key"|"88 kB"|"btree"|
-select indexrelname, pg_size_pretty(pg_relation_size(indexrelid)), amname
-from pg_stat_all_indexes sai
-join pg_class c ON sai.indexrelid=c.oid
-join pg_am am ON c.relam=am.oid
-where sai.relname in ('students', 'subjects', 'exam_results')
