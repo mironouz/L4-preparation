@@ -23,7 +23,7 @@ select indexrelname "Index name", pg_size_pretty(pg_relation_size(indexrelid)) "
 from pg_stat_all_indexes sai
 join pg_class c ON sai.indexrelid=c.oid
 join pg_am am ON c.relam=am.oid
-where sai.relname in ('students', 'subjects', 'exam_results')
+where sai.relname in ('students', 'subjects', 'exam_results');
 ```
 
 We can see postgress created indexes for primary keys and unique columns with btree type:
@@ -34,3 +34,84 @@ We can see postgress created indexes for primary keys and unique columns with bt
 |"students_phone_number_key"|"4360 kB"|"btree"|
 |"subjects_pkey"|"40 kB"|"btree"|
 |"subjects_subject_name_key"|"88 kB"|"btree"|
+
+Let's compare custom index types: size and creation time. For gist and gin indexes we need to enable few extensions:
+
+```sql
+create extension btree_gin;
+create extension btree_gist;
+create extension pg_trgm;
+```
+
+Let's create btree/hash/gin/gist indexes for few different columns from tables. For text columns we can use trigram option of gin/gist which is better suitable for the text search.
+
+```sql
+create index students_name_btree on students using btree(name);
+create index students_name_hash on students using hash(name);
+create index students_name_gin on students using gin(name);
+create index students_name_gin_trgm on students using gin(name gin_trgm_ops);
+create index students_name_gist on students using gist(name);
+create index students_name_gist_trgm on students using gist(name gist_trgm_ops);
+
+create index subjects_subject_name_btree on subjects using btree(subject_name);
+create index subjects_subject_name_hash on subjects using hash(subject_name);
+create index subjects_subject_name_gin on subjects using gin(subject_name);
+create index subjects_subject_name_gin_trgm on subjects using gin(subject_name gin_trgm_ops);
+create index subjects_subject_name_gist on subjects using gist(subject_name);
+create index subjects_subject_name_gist_trgm on subjects using gist(subject_name gist_trgm_ops);
+
+create index exam_results_mark_btree on exam_results using btree(mark);
+create index exam_results_mark_hash on exam_results using hash(mark);
+create index exam_results_mark_gin on exam_results using gin(mark);
+create index exam_results_mark_gist on exam_results using gist(mark);
+```
+
+Results:
+
+|"Index name"|"Index size"|"Index type"|"Creation time"|
+|---|---|---|---|
+|"students_name_btree"|"712 kB"|"btree"|105 ms|
+|"students_name_hash"|"4536 kB"|"hash"|121 ms|
+|"students_name_gin"|"520 kB"|"gin"|93 ms|
+|"students_name_gin_trgm"|"2248 kB"|"gin"|162 ms|
+|"students_name_gist"|"4312 kB"|"gist"|2 819 ms|
+|"students_name_gist_trgm"|"5992 kB"|"gist"|1 126 ms|
+|"subjects_subject_name_btree"|"72 kB"|"btree"|51 ms|
+|"subjects_subject_name_hash"|"48 kB"|"hash"|35 ms|
+|"subjects_subject_name_gin"|"120 kB"|"gin"|34 ms|
+|"subjects_subject_name_gin_trgm"|"288 kB"|"gin"|36 ms|
+|"subjects_subject_name_gist"|"80 kB"|"gist"|40 ms|
+|"subjects_subject_name_gist_trgm"|"184 kB"|"gist"|39 ms|
+|"exam_results_mark_btree"|"6792 kB"|"btree"|532 ms|
+|"exam_results_mark_hash"|"47 MB"|"hash"|32 218 ms|
+|"exam_results_mark_gin"|"1136 kB"|"gin"|190 ms|
+|"exam_results_mark_gist"|"42 MB"|"gist"|1 599 ms|
+
+In the result table for the student name field we can see that gist index is the slowest one for creation. Also, this index takes the most storage for both versions as well as trigram version of gin index. What can be weird from the first sight is that hash index takes much more place than btee index, actually even more than both gin and gist without trigram support. The explanation is that we have only 1000 different names for 100 000 studens and hash index does not work well for cases with many rows and few distinct values. In this case there are not enough buckets to make this type of index usable.
+
+Let's take a look on subject name from the subjects table. The situation with the hash index is much better. As the subject is unique, the hash function distibution is really well, there are no collisions. So index in this case is 50% smaller compare to btree. We can ask why postgres did not choose hash index for default indexes created automatically for unique fields. The answer is that has index can work only for strict comparison cases (= operator) and btree index is more flexible as supports greater and lower than comparisons in queries (> and < operators). Creation time is basically the same for all cases as there are just 1000 rows in this table. For the same reason it does not make sense to analyse indexes creation time before inserting data in tables. Also, we can see the trigram indexes takes the most space as in the previous case.
+
+By analysing indexes on the mark column from the exam_results cases we can see the very bad scenario for the hash index - there just 5 distinct values for the mark and one million rows. It did not just a lot of space (47 MB), but also it took half a minute to create hash index! Besides that we can see that gin index took less space even than btree and gist index took significan amount comparable to the hash index case.
+
+Let's drop our indexes and start analysing different query perfomance with different indexes by creating and removing indexes one by one.
+
+```sql
+drop index students_name_btree;
+drop index students_name_hash;
+drop index students_name_gin;
+drop index students_name_gin_trgm;
+drop index students_name_gist;
+drop index students_name_gist_trgm;
+
+drop index subjects_subject_name_btree;
+drop index subjects_subject_name_hash;
+drop index subjects_subject_name_gin;
+drop index subjects_subject_name_gin_trgm;
+drop index subjects_subject_name_gist;
+drop index subjects_subject_name_gist_trgm;
+
+drop index exam_results_mark_btree;
+drop index exam_results_mark_hash;
+drop index exam_results_mark_gin;
+drop index exam_results_mark_gist;
+```
