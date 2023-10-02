@@ -353,3 +353,89 @@ Gist trigram
 ```
 
 Yes, we can observe absolutely the same situation.
+
+D) find user with marks by partial surname
+
+```sql
+explain analyse select distinct s.student_id, name, surname from students s join exam_results er on s.student_id = er.student_id where surname like '%ram%';
+```
+
+No index
+```
+"Unique  (cost=13574.37..13574.55 rows=9 width=19) (actual time=41.601..43.106 rows=197 loops=1)"
+"  ->  Sort  (cost=13574.37..13574.41 rows=18 width=19) (actual time=41.600..43.039 rows=572 loops=1)"
+"        Sort Key: s.student_id, s.name, s.surname"
+"        Sort Method: quicksort  Memory: 60kB"
+"        ->  Gather  (cost=13572.10..13573.99 rows=18 width=19) (actual time=41.425..42.923 rows=572 loops=1)"
+"              Workers Planned: 2"
+"              Workers Launched: 2"
+"              ->  HashAggregate  (cost=12572.10..12572.19 rows=9 width=19) (actual time=39.578..39.601 rows=191 loops=3)"
+"                    Group Key: s.student_id, s.name, s.surname"
+"                    Batches: 1  Memory Usage: 56kB"
+"                    Worker 0:  Batches: 1  Memory Usage: 56kB"
+"                    Worker 1:  Batches: 1  Memory Usage: 56kB"
+"                    ->  Parallel Hash Join  (cost=1905.36..12571.82 rows=38 width=19) (actual time=4.238..39.250 rows=665 loops=3)"
+"                          Hash Cond: (er.student_id = s.student_id)"
+"                          ->  Parallel Seq Scan on exam_results er  (cost=0.00..9572.67 rows=416667 width=4) (actual time=0.018..16.661 rows=333333 loops=3)"
+"                          ->  Parallel Hash  (cost=1905.29..1905.29 rows=5 width=19) (actual time=4.075..4.075 rows=66 loops=3)"
+"                                Buckets: 1024  Batches: 1  Memory Usage: 104kB"
+"                                ->  Parallel Seq Scan on students s  (cost=0.00..1905.29 rows=5 width=19) (actual time=0.049..4.018 rows=66 loops=3)"
+"                                      Filter: ((surname)::text ~~ '%ram%'::text)"
+"                                      Rows Removed by Filter: 33268"
+"Planning Time: 0.203 ms"
+"Execution Time: 43.136 ms"
+```
+
+We see 'like' operator in condition so we already know that it does not make sense to apply any index except trigram and we know that gin trigram is the fastest option, so let's try to speed up this query this way.
+
+Gin trigram on student surname
+```
+"Unique  (cost=11714.94..11715.12 rows=9 width=19) (actual time=37.607..39.191 rows=197 loops=1)"
+"  ->  Sort  (cost=11714.94..11714.99 rows=18 width=19) (actual time=37.606..39.123 rows=578 loops=1)"
+"        Sort Key: s.student_id, s.name, s.surname"
+"        Sort Method: quicksort  Memory: 60kB"
+"        ->  Gather  (cost=11712.68..11714.57 rows=18 width=19) (actual time=37.440..39.003 rows=578 loops=1)"
+"              Workers Planned: 2"
+"              Workers Launched: 2"
+"              ->  HashAggregate  (cost=10712.68..10712.77 rows=9 width=19) (actual time=35.682..35.707 rows=193 loops=3)"
+"                    Group Key: s.student_id, s.name, s.surname"
+"                    Batches: 1  Memory Usage: 56kB"
+"                    Worker 0:  Batches: 1  Memory Usage: 56kB"
+"                    Worker 1:  Batches: 1  Memory Usage: 56kB"
+"                    ->  Hash Join  (cost=45.93..10712.39 rows=38 width=19) (actual time=1.533..35.377 rows=665 loops=3)"
+"                          Hash Cond: (er.student_id = s.student_id)"
+"                          ->  Parallel Seq Scan on exam_results er  (cost=0.00..9572.67 rows=416667 width=4) (actual time=0.017..15.816 rows=333333 loops=3)"
+"                          ->  Hash  (cost=45.82..45.82 rows=9 width=19) (actual time=1.478..1.479 rows=197 loops=3)"
+"                                Buckets: 1024  Batches: 1  Memory Usage: 18kB"
+"                                ->  Bitmap Heap Scan on students s  (cost=12.07..45.82 rows=9 width=19) (actual time=0.979..1.442 rows=197 loops=3)"
+"                                      Recheck Cond: ((surname)::text ~~ '%ram%'::text)"
+"                                      Rows Removed by Index Recheck: 183"
+"                                      Heap Blocks: exact=321"
+"                                      ->  Bitmap Index Scan on students_surname_gin_trgm  (cost=0.00..12.07 rows=9 width=0) (actual time=0.942..0.942 rows=380 loops=3)"
+"                                            Index Cond: ((surname)::text ~~ '%ram%'::text)"
+"Planning Time: 0.150 ms"
+"Execution Time: 39.229 ms"
+```
+
+We can see very small perfomance increase. How can we speed it up further? We know that student_id is primary key in student table and postgres created btree index automatically, so why there is no any perfomance gain? We can see the student_id from exam_results table in another side of the join and there is no created index for that column. Let's create btree index on it.
+
+Gin trigram on student surname + btree index on student_id in exam_results table
+```
+"HashAggregate  (cost=89.04..89.13 rows=9 width=19) (actual time=1.796..1.817 rows=197 loops=1)"
+"  Group Key: s.student_id, s.name, s.surname"
+"  Batches: 1  Memory Usage: 56kB"
+"  ->  Nested Loop  (cost=12.50..88.36 rows=90 width=19) (actual time=0.081..1.376 rows=1995 loops=1)"
+"        ->  Bitmap Heap Scan on students s  (cost=12.07..45.82 rows=9 width=19) (actual time=0.077..0.332 rows=197 loops=1)"
+"              Recheck Cond: ((surname)::text ~~ '%ram%'::text)"
+"              Rows Removed by Index Recheck: 183"
+"              Heap Blocks: exact=321"
+"              ->  Bitmap Index Scan on students_surname_gin_trgm  (cost=0.00..12.07 rows=9 width=0) (actual time=0.049..0.049 rows=380 loops=1)"
+"                    Index Cond: ((surname)::text ~~ '%ram%'::text)"
+"        ->  Index Only Scan using exam_results_student_id_btree on exam_results er  (cost=0.42..4.62 rows=11 width=4) (actual time=0.004..0.004 rows=10 loops=197)"
+"              Index Cond: (student_id = s.student_id)"
+"              Heap Fetches: 0"
+"Planning Time: 0.245 ms"
+"Execution Time: 1.845 ms"
+```
+
+We can see that query is executed much faster this time.
