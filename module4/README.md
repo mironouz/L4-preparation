@@ -115,3 +115,241 @@ drop index exam_results_mark_hash;
 drop index exam_results_mark_gin;
 drop index exam_results_mark_gist;
 ```
+
+## Queries perfomance analysis
+A) exact match by name:
+
+```sql
+explain analyse select * from students where name = 'Mora'
+```
+
+No index
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=99 width=62) (actual time=0.017..6.567 rows=95 loops=1)"
+"  Filter: ((name)::text = 'Mora'::text)"
+"  Rows Removed by Filter: 99905"
+"Planning Time: 0.044 ms"
+"Execution Time: 6.578 ms"
+```
+
+BTree
+```
+"Bitmap Heap Scan on students  (cost=5.06..305.09 rows=99 width=62) (actual time=0.034..0.137 rows=95 loops=1)"
+"  Recheck Cond: ((name)::text = 'Mora'::text)"
+"  Heap Blocks: exact=94"
+"  ->  Bitmap Index Scan on students_name_btree  (cost=0.00..5.04 rows=99 width=0) (actual time=0.021..0.021 rows=95 loops=1)"
+"        Index Cond: ((name)::text = 'Mora'::text)"
+"Planning Time: 0.074 ms"
+"Execution Time: 0.162 ms"
+```
+
+Hash
+```
+"Bitmap Heap Scan on students  (cost=4.77..304.79 rows=99 width=62) (actual time=0.019..0.090 rows=95 loops=1)"
+"  Recheck Cond: ((name)::text = 'Mora'::text)"
+"  Heap Blocks: exact=94"
+"  ->  Bitmap Index Scan on students_name_hash  (cost=0.00..4.74 rows=99 width=0) (actual time=0.008..0.008 rows=95 loops=1)"
+"        Index Cond: ((name)::text = 'Mora'::text)"
+"Planning Time: 0.050 ms"
+"Execution Time: 0.104 ms"
+```
+
+Gin
+```
+"Bitmap Heap Scan on students  (cost=12.77..312.79 rows=99 width=62) (actual time=0.032..0.122 rows=95 loops=1)"
+"  Recheck Cond: ((name)::text = 'Mora'::text)"
+"  Heap Blocks: exact=94"
+"  ->  Bitmap Index Scan on students_name_gin  (cost=0.00..12.74 rows=99 width=0) (actual time=0.020..0.020 rows=95 loops=1)"
+"        Index Cond: ((name)::text = 'Mora'::text)"
+"Planning Time: 0.141 ms"
+"Execution Time: 0.143 ms"
+```
+
+Gin trigram
+```
+"Bitmap Heap Scan on students  (cost=44.77..344.79 rows=99 width=62) (actual time=0.130..0.197 rows=95 loops=1)"
+"  Recheck Cond: ((name)::text = 'Mora'::text)"
+"  Heap Blocks: exact=94"
+"  ->  Bitmap Index Scan on students_name_gin_trgm  (cost=0.00..44.74 rows=99 width=0) (actual time=0.119..0.119 rows=95 loops=1)"
+"        Index Cond: ((name)::text = 'Mora'::text)"
+"Planning Time: 0.110 ms"
+"Execution Time: 0.212 ms"
+```
+
+Gist
+```
+"Bitmap Heap Scan on students  (cost=5.05..305.07 rows=99 width=62) (actual time=0.072..0.138 rows=95 loops=1)"
+"  Recheck Cond: ((name)::text = 'Mora'::text)"
+"  Heap Blocks: exact=94"
+"  ->  Bitmap Index Scan on students_name_gist  (cost=0.00..5.02 rows=99 width=0) (actual time=0.062..0.062 rows=95 loops=1)"
+"        Index Cond: ((name)::text = 'Mora'::text)"
+"Planning Time: 0.102 ms"
+"Execution Time: 0.157 ms"
+```
+
+Gist trigram
+```
+"Bitmap Heap Scan on students  (cost=5.05..305.07 rows=99 width=62) (actual time=2.028..2.123 rows=95 loops=1)"
+"  Recheck Cond: ((name)::text = 'Mora'::text)"
+"  Heap Blocks: exact=94"
+"  ->  Bitmap Index Scan on students_name_gist_trgm  (cost=0.00..5.02 rows=99 width=0) (actual time=1.999..1.999 rows=95 loops=1)"
+"        Index Cond: ((name)::text = 'Mora'::text)"
+"Planning Time: 0.124 ms"
+"Execution Time: 2.166 ms"
+```
+
+We can see that all indexes speed up search more or less same well and give us 30-60 times perfomance gain except Gist trigram index which only 3 times faster than search without any index.
+
+B) partial match by surname
+
+```sql
+explain analyze select * from students where surname like '%ram%'
+```
+
+No index
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=9 width=62) (actual time=0.008..9.874 rows=197 loops=1)"
+"  Filter: ((surname)::text ~~ '%ram%'::text)"
+"  Rows Removed by Filter: 99803"
+"Planning Time: 0.051 ms"
+"Execution Time: 9.890 ms"
+```
+
+BTree
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=9 width=62) (actual time=0.007..10.114 rows=197 loops=1)"
+"  Filter: ((surname)::text ~~ '%ram%'::text)"
+"  Rows Removed by Filter: 99803"
+"Planning Time: 0.646 ms"
+"Execution Time: 10.128 ms"
+```
+
+Hash
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=9 width=62) (actual time=0.007..9.851 rows=197 loops=1)"
+"  Filter: ((surname)::text ~~ '%ram%'::text)"
+"  Rows Removed by Filter: 99803"
+"Planning Time: 0.097 ms"
+"Execution Time: 9.864 ms"
+```
+
+Gin
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=9 width=62) (actual time=0.007..9.662 rows=197 loops=1)"
+"  Filter: ((surname)::text ~~ '%ram%'::text)"
+"  Rows Removed by Filter: 99803"
+"Planning Time: 0.077 ms"
+"Execution Time: 9.676 ms"
+```
+
+Gin trigram
+```
+"Bitmap Heap Scan on students  (cost=12.07..45.82 rows=9 width=62) (actual time=0.091..0.457 rows=197 loops=1)"
+"  Recheck Cond: ((surname)::text ~~ '%ram%'::text)"
+"  Rows Removed by Index Recheck: 183"
+"  Heap Blocks: exact=321"
+"  ->  Bitmap Index Scan on students_surname_gin_trgm  (cost=0.00..12.07 rows=9 width=0) (actual time=0.056..0.056 rows=380 loops=1)"
+"        Index Cond: ((surname)::text ~~ '%ram%'::text)"
+"Planning Time: 0.146 ms"
+"Execution Time: 0.480 ms"
+```
+
+Gist
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=9 width=62) (actual time=0.009..9.466 rows=197 loops=1)"
+"  Filter: ((surname)::text ~~ '%ram%'::text)"
+"  Rows Removed by Filter: 99803"
+"Planning Time: 0.069 ms"
+"Execution Time: 9.481 ms"
+```
+
+Gist trigram
+```
+"Bitmap Heap Scan on students  (cost=4.35..38.09 rows=9 width=62) (actual time=4.276..4.495 rows=197 loops=1)"
+"  Recheck Cond: ((surname)::text ~~ '%ram%'::text)"
+"  Rows Removed by Index Recheck: 183"
+"  Heap Blocks: exact=321"
+"  ->  Bitmap Index Scan on students_surname_gist_trgm  (cost=0.00..4.35 rows=9 width=0) (actual time=4.247..4.247 rows=380 loops=1)"
+"        Index Cond: ((surname)::text ~~ '%ram%'::text)"
+"Planning Time: 0.106 ms"
+"Execution Time: 4.517 ms"
+```
+
+We can see that only trigram versions of Gin and Gist indexes were really used in the search. Every other index does not support 'like' operator. Also, we see that Gist trigram perfomance gain was only 2 times faster, but Gin trigram around 20.
+
+C) partial match by phone number
+
+This case should be exactly same as previous. Let's validate our expectations.
+
+```sql
+explain analyse select * from students where phone_number like '%130%'
+```
+
+No index
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=1010 width=62) (actual time=0.012..11.264 rows=895 loops=1)"
+"  Filter: ((phone_number)::text ~~ '%130%'::text)"
+"  Rows Removed by Filter: 99105"
+"Planning Time: 0.071 ms"
+"Execution Time: 11.292 ms"
+```
+
+BTree
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=1010 width=62) (actual time=0.013..11.957 rows=895 loops=1)"
+"  Filter: ((phone_number)::text ~~ '%130%'::text)"
+"  Rows Removed by Filter: 99105"
+"Planning Time: 0.103 ms"
+"Execution Time: 11.989 ms"
+```
+
+Hash
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=1010 width=62) (actual time=0.013..10.819 rows=895 loops=1)"
+"  Filter: ((phone_number)::text ~~ '%130%'::text)"
+"  Rows Removed by Filter: 99105"
+"Planning Time: 0.093 ms"
+"Execution Time: 10.846 ms"
+```
+
+Gin
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=1010 width=62) (actual time=0.015..11.104 rows=895 loops=1)"
+"  Filter: ((phone_number)::text ~~ '%130%'::text)"
+"  Rows Removed by Filter: 99105"
+"Planning Time: 0.087 ms"
+"Execution Time: 11.132 ms"
+```
+
+Gin trigram
+```
+"Bitmap Heap Scan on students  (cost=19.83..1211.19 rows=1010 width=62) (actual time=0.132..0.611 rows=895 loops=1)"
+"  Recheck Cond: ((phone_number)::text ~~ '%130%'::text)"
+"  Heap Blocks: exact=617"
+"  ->  Bitmap Index Scan on students_phone_number_gin_trgm  (cost=0.00..19.58 rows=1010 width=0) (actual time=0.078..0.078 rows=895 loops=1)"
+"        Index Cond: ((phone_number)::text ~~ '%130%'::text)"
+"Planning Time: 0.073 ms"
+"Execution Time: 0.643 ms"
+```
+
+Gist
+```
+"Seq Scan on students  (cost=0.00..2420.00 rows=1010 width=62) (actual time=0.013..11.290 rows=895 loops=1)"
+"  Filter: ((phone_number)::text ~~ '%130%'::text)"
+"  Rows Removed by Filter: 99105"
+"Planning Time: 0.049 ms"
+"Execution Time: 11.324 ms"
+```
+
+Gist trigram
+```
+"Bitmap Heap Scan on students  (cost=56.11..1247.47 rows=1010 width=62) (actual time=5.095..5.558 rows=895 loops=1)"
+"  Recheck Cond: ((phone_number)::text ~~ '%130%'::text)"
+"  Heap Blocks: exact=617"
+"  ->  Bitmap Index Scan on students_phone_number_gist_trgm  (cost=0.00..55.86 rows=1010 width=0) (actual time=5.036..5.037 rows=895 loops=1)"
+"        Index Cond: ((phone_number)::text ~~ '%130%'::text)"
+"Planning Time: 0.099 ms"
+"Execution Time: 5.592 ms"
+```
+
+Yes, we can observe absolutely the same situation.
