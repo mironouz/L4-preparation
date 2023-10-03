@@ -439,3 +439,127 @@ Gin trigram on student surname + btree index on student_id in exam_results table
 ```
 
 We can see that query is executed much faster this time.
+
+# Other exercises
+
+## Add trigger that will update column updated_datetime to current date in case of updating any of student.
+
+Let's create a new function:
+
+```sql
+create or replace function update_datetime() returns trigger
+    language plpgsql
+    immutable
+as
+$$
+begin
+   new.updated_datetime = now(); 
+   return new;
+end;
+$$
+```
+
+Now we can set it as a trigger for each row on students table updates
+
+```sql
+create or replace trigger update_students_datetime
+before update on students
+for each row execute procedure update_datetime();
+```
+
+Let's change some value to verify it is executed
+
+```sql
+explain analyze update students set name='new_name' where student_id = 1;
+```
+
+```
+"Update on students  (cost=0.29..8.31 rows=0 width=0) (actual time=0.110..0.111 rows=0 loops=1)"
+"  ->  Index Scan using students_pkey on students  (cost=0.29..8.31 rows=1 width=64) (actual time=0.006..0.007 rows=1 loops=1)"
+"        Index Cond: (student_id = 1)"
+"Planning Time: 0.068 ms"
+"Trigger update_students_datetime: time=0.065 calls=1"
+"Execution Time: 0.128 ms"
+```
+
+We can see the trigger was executed.
+
+## Add validation on DB level that will check username on special characters (reject student name with next characters '@', '#', '$'). 
+
+Let's create such a constraint and try to modify same user name to contain prohibited symbol:
+
+```sql
+alter table students drop constraint if exists valid_name
+alter table students add constraint valid_name check(name !~* '[@#$]+')
+update students set name='new_name@' where student_id = 1
+```
+
+The error is raised during name modification:
+
+```
+ERROR:  new row for relation "students" violates check constraint "valid_name"
+```
+
+## Create snapshot that will contain next data: student name, student surname, subject name, mark (snapshot means that in case of changing some data in source table – your snapshot should not change).
+
+```sql
+copy
+(select name, surname, subject_name, mark from students s
+join exam_results er on s.student_id=er.student_id
+join subjects sub on sub.subject_id=er.subject_id)
+to '/tmp/snapshot.csv';
+```
+
+## Create function that will return average mark for input user.
+
+```sql
+create or replace function user_avg(integer) returns numeric
+    language plpgsql
+    immutable
+as
+$$
+begin
+    return (select avg(er.mark) from exam_results as er join students as s on er.student_id = s.student_id where s.student_id = $1);
+end;
+$$;
+
+select user_avg(100);
+```
+
+## Create function that will return avarage mark for input subject name.
+
+```sql
+create or replace function subject_avg(text) returns numeric
+    language plpgsql
+    immutable
+as
+$$
+begin
+  return (select avg(er.mark) from exam_results er join subjects s on er.subject_id = s.subject_id where s.subject_name = $1);
+end;
+$$;
+
+select subject_avg('Confetti and Saw');
+```
+
+## Create function that will return student at "red zone" (red zone means at least 2 marks <=3).
+
+It was not clear which student to return from red zone, so I decided to return number of students in the red zone.
+
+```sql
+create or replace function red_students() returns integer
+    language plpgsql
+    immutable
+as
+$$
+begin
+	return (select count(student_id) from 
+		(select s.student_id, sum(er.mark) from students s
+		 join exam_results er on er.student_id = s.student_id
+		 where er.mark <= 3 group by s.student_id) as red
+	where sum >= 2);
+end;
+$$;
+
+select red_students();
+```

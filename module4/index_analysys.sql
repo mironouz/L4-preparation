@@ -51,7 +51,7 @@ drop index exam_results_mark_gin;
 drop index exam_results_mark_gist;
 
 -- Queries for analysys
-explain analyse select * from students where name = 'Mora'
-explain analyse select * from students where surname like 'f3a%'
-explain analyse select * from students where phone_number like '130%'
-explain analyse select distinct s.student_id, name, surname from students s join exam_results er on s.student_id = er.student_id where surname like 'f3a%'
+explain analyse select * from students where name = 'Mora';
+explain analyse select * from students where surname like '%ram%';
+explain analyse select * from students where phone_number like '%130%';
+explain analyse select distinct s.student_id, name, surname from students s join exam_results er on s.student_id = er.student_id where surname like '%ram%';
