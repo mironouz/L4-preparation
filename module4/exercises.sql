@@ -9,19 +9,19 @@ begin
    new.updated_datetime = now(); 
    return new;
 end;
-$$
+$$;
 
 create or replace trigger update_students_datetime
 before update on students
 for each row execute procedure update_datetime();
 	
-explain analyze update students set name='new_name' where student_id = 1
+explain analyze update students set name='new_name' where student_id = 1;
 
 -- Add validation on DB level that will check username
 -- on special characters (reject student name with next characters '@', '#', '$'). 
-alter table students drop constraint if exists valid_name
-alter table students add constraint valid_name check(name !~* '[@#$]+')
-update students set name='new_name@' where student_id = 1
+alter table students drop constraint if exists valid_name;
+alter table students add constraint valid_name check(name !~* '[@#$]+');
+update students set name='new_name@' where student_id = 1;
 
 -- Create snapshot that will contain next data:
 -- student name, student surname, subject name, mark

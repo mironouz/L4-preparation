@@ -4,7 +4,7 @@
 
 ## Design
 
-Let's design the simple database with 3 tables: students, subjects and exam_results. Students and Subjects tables both has id as the primary key which is foreign key in Exam results table and demonstrates one-to-many relationship, so each result can be identified by participating of single student in single subject. 
+Let's design the simple database with 3 tables: students, subjects and exam_results. Students and subjects tables both has id as the primary key which is foreign key in exam_results table and demonstrates one-to-many relationship, so each result can be identified by participating of single student in single subject exam. 
 
 ![alt text](design.png)
 
@@ -16,6 +16,7 @@ We need to populate tables with huge amount of data for index analysis task. At 
 
 ## Index analysis
 
+### Size and creation time
 Let's check index sizes right after feeeding the data before creating any custom index. We can use the following command to check it:
 
 ```sql
@@ -87,13 +88,13 @@ Results:
 |"exam_results_mark_gin"|"1136 kB"|"gin"|190 ms|
 |"exam_results_mark_gist"|"42 MB"|"gist"|1 599 ms|
 
-In the result table for the student name field we can see that gist index is the slowest one for creation. Also, this index takes the most storage for both versions as well as trigram version of gin index. What can be weird from the first sight is that hash index takes much more place than btee index, actually even more than both gin and gist without trigram support. The explanation is that we have only 1000 different names for 100 000 studens and hash index does not work well for cases with many rows and few distinct values. In this case there are not enough buckets to make this type of index usable.
+In the result table for the student name field we can see that gist index is the slowest one for creation. Also, this index takes the most storage for both versions as well as trigram version of gin index. What can be weird from the first sight is that hash index takes much more place than btee index, actually even more than both gin and gist without trigram support. The explanation is that we have only 1000 different names for 100 000 studens and hash index does not work well for cases with many rows and few distinct values. In this case there are not enough buckets to make this type of index preferable.
 
-Let's take a look on subject name from the subjects table. The situation with the hash index is much better. As the subject is unique, the hash function distibution is really well, there are no collisions. So index in this case is 50% smaller compare to btree. We can ask why postgres did not choose hash index for default indexes created automatically for unique fields. The answer is that has index can work only for strict comparison cases (= operator) and btree index is more flexible as supports greater and lower than comparisons in queries (> and < operators). Creation time is basically the same for all cases as there are just 1000 rows in this table. For the same reason it does not make sense to analyse indexes creation time before inserting data in tables. Also, we can see the trigram indexes takes the most space as in the previous case.
+Let's take a look on subject name from the subjects table. The situation with the hash index is much better. As the subject is unique, the hash function distibution is really well, there are no collisions. So index in this case is 50% smaller compare to btree. We can ask why postgres did not choose hash index for default indexes created automatically for unique fields. The answer is that hash index can work only for strict comparison (= operator) and btree index is more flexible as supports greater and lower than comparison in queries (> and < operators). Creation time is basically the same for all cases as there are just 1000 rows in this table. For the same reason it does not make sense to analyse indexes creation time before inserting data in tables. Also, we can see the trigram indexes take the most space as in the previous case.
 
-By analysing indexes on the mark column from the exam_results cases we can see the very bad scenario for the hash index - there just 5 distinct values for the mark and one million rows. It did not just a lot of space (47 MB), but also it took half a minute to create hash index! Besides that we can see that gin index took less space even than btree and gist index took significan amount comparable to the hash index case.
+By analysing indexes on the mark column from the exam_results cases we can see the very bad scenario for the hash index - there are just 5 distinct values for the mark and one million rows. It did not use just a lot of space (47 MB), but also it took half a minute to create hash index! Besides that we can see that gin index took less space even than btree and gist index took significant amount comparable to the hash index case.
 
-Let's drop our indexes and start analysing different query perfomance with different indexes by creating and removing indexes one by one.
+Let's drop our indexes and start analysing different query perfomance by creating and removing indexes one by one.
 
 ```sql
 drop index students_name_btree;
@@ -116,11 +117,11 @@ drop index exam_results_mark_gin;
 drop index exam_results_mark_gist;
 ```
 
-## Queries perfomance analysis
+### Queries perfomance analysis
 A) exact match by name:
 
 ```sql
-explain analyse select * from students where name = 'Mora'
+explain analyse select * from students where name = 'Mora';
 ```
 
 No index
@@ -198,12 +199,12 @@ Gist trigram
 "Execution Time: 2.166 ms"
 ```
 
-We can see that all indexes speed up search more or less same well and give us 30-60 times perfomance gain except Gist trigram index which only 3 times faster than search without any index.
+We can see that all indexes speed up search more or less same well and give us 30-60 times perfomance gain except Gist trigram index which is only 3 times faster than search without any index.
 
 B) partial match by surname
 
 ```sql
-explain analyze select * from students where surname like '%ram%'
+explain analyze select * from students where surname like '%ram%';
 ```
 
 No index
@@ -275,14 +276,14 @@ Gist trigram
 "Execution Time: 4.517 ms"
 ```
 
-We can see that only trigram versions of Gin and Gist indexes were really used in the search. Every other index does not support 'like' operator. Also, we see that Gist trigram perfomance gain was only 2 times faster, but Gin trigram around 20.
+We can see that only trigram versions of Gin and Gist indexes were used in the search. Every other index does not support 'like' operator. Also, we see that Gist trigram perfomance gain was only 2 times faster, but Gin trigram around 20.
 
 C) partial match by phone number
 
 This case should be exactly same as previous. Let's validate our expectations.
 
 ```sql
-explain analyse select * from students where phone_number like '%130%'
+explain analyse select * from students where phone_number like '%130%';
 ```
 
 No index
@@ -354,7 +355,7 @@ Gist trigram
 
 Yes, we can observe absolutely the same situation.
 
-D) find user with marks by partial surname
+D) find user with marks by partial surname;
 
 ```sql
 explain analyse select distinct s.student_id, name, surname from students s join exam_results er on s.student_id = er.student_id where surname like '%ram%';
@@ -417,7 +418,7 @@ Gin trigram on student surname
 "Execution Time: 39.229 ms"
 ```
 
-We can see very small perfomance increase. How can we speed it up further? We know that student_id is primary key in student table and postgres created btree index automatically, so why there is no any perfomance gain? We can see the student_id from exam_results table in another side of the join and there is no created index for that column. Let's create btree index on it.
+We can see very small perfomance increase. How can we speed it up further? We know that student_id is primary key in student table and postgres created btree index automatically, so why there is no any perfomance gain? Tha answer is the student_id from exam_results table in another side of the join - there is no created index for that column. Let's create btree index on it.
 
 Gin trigram on student surname + btree index on student_id in exam_results table
 ```
@@ -456,7 +457,7 @@ begin
    new.updated_datetime = now(); 
    return new;
 end;
-$$
+$$;
 ```
 
 Now we can set it as a trigger for each row on students table updates
@@ -489,9 +490,9 @@ We can see the trigger was executed.
 Let's create such a constraint and try to modify same user name to contain prohibited symbol:
 
 ```sql
-alter table students drop constraint if exists valid_name
-alter table students add constraint valid_name check(name !~* '[@#$]+')
-update students set name='new_name@' where student_id = 1
+alter table students drop constraint if exists valid_name;
+alter table students add constraint valid_name check(name !~* '[@#$]+');
+update students set name='new_name@' where student_id = 1;
 ```
 
 The error is raised during name modification:
