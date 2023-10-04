@@ -76,3 +76,51 @@ end;
 $$;
 
 select red_students();
+
+-- Implement immutable data trigger. Create new table student_address.
+-- Add several rows with test data and do not give acces to update any information inside it.
+-- Hint: you can create trigger that will reject any update operation for target table,
+-- but save new row with updated (merged with original) data into separate table.
+drop table if exists student_address cascade;
+create table student_address(
+    student_id int references students(student_id) unique,
+    city text not null,
+	street text not null,
+	building text not null
+);
+
+drop table if exists student_address_update_history cascade;
+create table student_address_update_history(
+    student_id int references students(student_id),
+    city text not null,
+	street text not null,
+	building text not null,
+	updated timestamp not null
+);
+
+insert into student_address values(1, 'Budapest', 'Szobor', '777');
+insert into student_address values(13, 'Debrecen', 'Izabella', '13');
+
+create or replace function update_student_address_immutable() returns trigger
+    language plpgsql
+as
+$$
+begin
+	if (tg_op = 'UPDATE') then
+		insert
+			into student_address_update_history(student_id, city, street, building, updated)
+			values(new.student_id, new.city, new.street, new.building, now());
+	end if;
+	return null;
+end;
+$$;
+
+create or replace trigger update_student_address
+before update on student_address
+for each row execute procedure update_student_address_immutable();
+
+update student_address set city='New York' where student_id=1;
+update student_address set city='Dubai', building=6 where student_id=1;
+
+select * from student_address;
+select * from student_address_update_history;

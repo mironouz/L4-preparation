@@ -566,3 +566,76 @@ $$;
 
 select red_students();
 ```
+
+## Implement immutable data trigger. Create new table student_address. Add several rows with test data and do not give acces to update any information inside it. Hint: you can create trigger that will reject any update operation for target table, but save new row with updated (merged with original) data into separate table.
+
+Let's create our tables structure and insert few entries:
+
+```sql
+drop table if exists student_address cascade;
+create table student_address(
+    student_id int references students(student_id) unique,
+    city text not null,
+	street text not null,
+	building text not null
+);
+
+drop table if exists student_address_update_history cascade;
+create table student_address_update_history(
+    student_id int references students(student_id),
+    city text not null,
+	street text not null,
+	building text not null,
+	updated timestamp not null
+);
+
+insert into student_address values(1, 'Budapest', 'Szobor', '777');
+insert into student_address values(13, 'Debrecen', 'Izabella', '13');
+```
+
+Let's create trigger which is going to be executed before the update of the original table. By returning null we will block row update and all the data which we insert in the historical table we can take from the newly inserted entry, if something is missed it will be taken from the old and this way we can achieve the merge functionality.
+
+```sql
+create or replace function update_student_address_immutable() returns trigger
+    language plpgsql
+as
+$$
+begin
+	if (tg_op = 'UPDATE') then
+		insert
+			into student_address_update_history(student_id, city, street, building, updated)
+			values(new.student_id, new.city, new.street, new.building, now());
+	end if;
+	return null;
+end;
+$$;
+
+create or replace trigger update_student_address
+before update on student_address
+for each row execute procedure update_student_address_immutable();
+```
+
+Let's modify some rows and validate that original data has not been changed, but properly inserted to the historical table with the proper merge with the original row.
+
+```sql
+update student_address set city='New York' where student_id=1;
+update student_address set city='Dubai', building=6 where student_id=1;
+
+select * from student_address;
+select * from student_address_update_history;
+```
+Original table:
+
+|student_id|city|street|building|
+|---|---|---|---|
+|1|"Budapest"|"Szobor"|"777"|
+|13|"Debrecen"|"Izabella"|"13"|
+
+Historical table:
+
+|student_id|city|street|building|updated|
+|---|---|---|---|---|
+|1|"New York"|"Szobor"|"777"|2023-10-04 00:25:53.243035|
+|1|"Dubai"|"Izabella"|"6"|2023-10-04 00:25:53.243035|
+
+As we see the original data is untouched and both modification attempts have audit line in the historical table.
