@@ -1,1 +1,4 @@
-module1/app/
+.gradle
+.idea
+build
+bin
