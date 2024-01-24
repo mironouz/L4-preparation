@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans https://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <!-- common beans -->
+    <context:property-placeholder location="classpath:booking.properties"/>
+
+    <bean id="store" class="dao.InMemoryStore" />
+    <bean id="idGenerator" class="dao.IdGenerator" />
+
+    <bean id="storeInitBeanPostProcessor" class="config.StoreInitBeanPostProcessor">
+        <constructor-arg name="beanName" value="store"/>
+        <constructor-arg name="path" value="${store.file.location}"/>
+    </bean>
+
+    <!-- user entity related beans  -->
+    <bean id="userDao" class="dao.UserDaoImpl">
+        <constructor-arg name="store" ref="store"/>
+        <constructor-arg name="idGenerator" ref="idGenerator"/>
+    </bean>
+
+    <bean id="userService" class="service.DefaultUserService">
+        <constructor-arg name="dao" ref="userDao"/>
+    </bean>
+
+    <!-- event entity related beans -->
+    <bean id="eventDao" class="dao.EventDaoImpl">
+        <constructor-arg name="store" ref="store"/>
+        <constructor-arg name="idGenerator" ref="idGenerator"/>
+    </bean>
+
+    <bean id="eventService" class="service.DefaultEventService">
+        <constructor-arg name="dao" ref="eventDao"/>
+    </bean>
+
+    <!-- event entity related beans -->
+    <bean id="ticketDao" class="dao.TicketDaoImpl">
+        <constructor-arg name="store" ref="store"/>
+        <constructor-arg name="idGenerator" ref="idGenerator"/>
+    </bean>
+
+    <bean id="ticketService" class="service.DefaultTicketService">
+        <constructor-arg name="dao" ref="ticketDao"/>
+        <constructor-arg name="eventService" ref="eventService"/>
+        <constructor-arg name="userService" ref="userService"/>
+    </bean>
+
+    <!-- booking facade related beans -->
+    <bean id="bookingFacade" class="facade.DefaultBookingFacade">
+        <constructor-arg name="userService" ref="userService" />
+        <constructor-arg name="eventService" ref="eventService" />
+        <constructor-arg name="ticketService" ref="ticketService" />
+    </bean>
+
+</beans>

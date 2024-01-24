@@ -1,0 +1,8 @@
+user,1,User1,user1@email.org
+user,2,User2,user2@email.org
+event,3,Event3,2023-02-04
+event,4,Event4,2023-02-05
+event,5,Event5,2023-02-06
+ticket,6,BAR,2,3,5
+ticket,7,BAR,2,4,6
+ticket,8,BAR,1,5,5
